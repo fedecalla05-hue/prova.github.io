@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catalogo Prodotti</title>
+  <style>
+    /* --- Stile base e layout responsive --- */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .filters, .sort-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 15px;
+      justify-content: center;
+    }
+    input, button {
+      padding: 8px;
+      font-size: 14px;
+    }
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 15px;
+    }
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .card h3 {
+      margin: 0 0 5px;
+    }
+    .card p {
+      margin: 3px 0;
+    }
+    @media (max-width: 600px) {
+      .filters, .sort-buttons {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Catalogo Prodotti</h1>
+
+  <!-- --- Sezione ricerca e filtri --- -->
+  <div class="filters">
+    <input type="text" id="searchInput" placeholder="Cerca prodotto...">
+    <input type="number" id="minPrice" placeholder="Prezzo minimo">
+    <input type="number" id="maxPrice" placeholder="Prezzo massimo">
+    <input type="number" id="maxDistance" placeholder="Distanza max (km)">
+    <button onclick="applyFilters()">Applica filtri</button>
+  </div>
+
+  <!-- --- Pulsanti ordinamento --- -->
+  <div class="sort-buttons">
+    <button onclick="sortResults('priceAsc')">Ordina per prezzo ↑</button>
+    <button onclick="sortResults('priceDesc')">Ordina per prezzo ↓</button>
+    <button onclick="sortResults('distance')">Ordina per distanza</button>
+  </div>
+
+  <!-- --- Risultati --- -->
+  <div class="results" id="results"></div>
+
+  <script>
+    // --- Dati di esempio ---
+    const shops = [
+      {
+        name: "Negozio A",
+        location: { lat: 45.4642, lon: 9.19 }, // Milano
+        products: [
+          { name: "Scarpe", price: 50 },
+          { name: "Borsa", price: 80 }
+        ],
+        address: "Via Milano 1, Milano"
+      },
+      {
+        name: "Negozio B",
+        location: { lat: 45.07, lon: 7.68 }, // Torino
+        products: [
+          { name: "Scarpe", price: 40 },
+          { name: "Cappello", price: 20 }
+        ],
+        address: "Corso Torino 10, Torino"
+      },
+      {
+        name: "Negozio C",
+        location: { lat: 44.4949, lon: 11.3426 }, // Bologna
+        products: [
+          { name: "Borsa", price: 70 },
+          { name: "Cappello", price: 25 }
+        ],
+        address: "Piazza Maggiore, Bologna"
+      }
+    ];
+
+    let userPosition = null;
+    let filteredResults = [];
+
+    // --- Calcolo distanza con formula haversine ---
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371; // raggio terrestre in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // --- Recupera posizione utente (se consentito) ---
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        userPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      });
+    }
+
+    // --- Applica filtri ---
+    function applyFilters() {
+      const query = document.getElementById("searchInput").value.toLowerCase();
+      const minPrice = parseFloat(document.getElementById("minPrice").value) || 0;
+      const maxPrice = parseFloat(document.getElementById("maxPrice").value) || Infinity;
+      const maxDistance = parseFloat(document.getElementById("maxDistance").value) || Infinity;
+
+      filteredResults = [];
+
+      shops.forEach(shop => {
+        shop.products.forEach(product => {
+          if (product.name.toLowerCase().includes(query) &&
+              product.price >= minPrice && product.price <= maxPrice) {
+            
+            let distance = null;
+            if (userPosition) {
+              distance = haversine(userPosition.lat, userPosition.lon, shop.location.lat, shop.location.lon);
+              if (distance > maxDistance) return; // esclude se troppo lontano
+            }
+
+            filteredResults.push({
+              shopName: shop.name,
+              productName: product.name,
+              price: product.price,
+              address: shop.address,
+              distance: distance
+            });
+          }
+        });
+      });
+
+      renderResults(filteredResults);
+    }
+
+    // --- Ordina risultati ---
+    function sortResults(criteria) {
+      if (criteria === "priceAsc") {
+        filteredResults.sort((a, b) => a.price - b.price);
+      } else if (criteria === "priceDesc") {
+        filteredResults.sort((a, b) => b.price - a.price);
+      } else if (criteria === "distance" && userPosition) {
+        filteredResults.sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity));
+      }
+      renderResults(filteredResults);
+    }
+
+    // --- Mostra risultati ---
+    function renderResults(results) {
+      const container = document.getElementById("results");
+      container.innerHTML = "";
+      if (results.length === 0) {
+        container.innerHTML = "<p>Nessun risultato trovato.</p>";
+        return;
+      }
+      results.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <h3>${item.productName} - €${item.price}</h3>
+          <p><strong>Negozio:</strong> ${item.shopName}</p>
+          <p><strong>Indirizzo:</strong> ${item.address}</p>
+          ${item.distance !== null ? `<p><strong>Distanza:</strong> ${item.distance.toFixed(1)} km</p>` : ""}
+        `;
+        container.appendChild(card);
+      });
+    }
+  </script>
+</body>
+</html>
